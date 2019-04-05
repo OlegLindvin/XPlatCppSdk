@@ -5,6 +5,7 @@ It currently supports the following platforms:
 - Windows (Win32) x64
 - Xbox One
 - Linux
+- Android
 
 This SDK lets you make REST API calls to the PlayFab service. It depends on some external third-party open source libraries referenced as git submodules in directory `/external`. Please make sure to use `--recurse-submodules` command line parameter when cloning SDK's git repo:
 ```

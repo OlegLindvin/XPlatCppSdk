@@ -1,5 +1,5 @@
 // Copyright (C) Microsoft Corporation. All rights reserved.
-// 
+//
 // This header file is used to include headers of transport plugins supported on each platform.
 
 #pragma once
@@ -20,3 +20,8 @@
 #include <playfab/PlayFabCurlHttpPlugin.h>
 #include <playfab/OneDSCurlHttpPlugin.h>
 #endif // PLAYFAB_PLATFORM_LINUX
+
+#ifdef PLAYFAB_PLATFORM_ANDROID
+#include <playfab/PlayFabAndroidHttpPlugin.h>
+#include <playfab/OneDSAndroidHttpPlugin.h>
+#endif // PLAYFAB_PLATFORM_ANDROID
