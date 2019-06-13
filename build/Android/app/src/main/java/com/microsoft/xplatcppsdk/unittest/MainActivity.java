@@ -2,8 +2,11 @@ package com.microsoft.xplatcppsdk.unittest;
 
 import java.util.Timer;
 import java.util.TimerTask;
+import java.io.InputStream;
+import android.content.Context;
 
 import android.app.Activity;
+import android.content.res.AssetManager;
 import android.os.Handler;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -25,9 +28,39 @@ public class MainActivity extends AppCompatActivity {
     final Runnable runUnitTest = new Runnable() {
         @Override
         public void run() {
+            String titleData = loadPackagedTestTitleData();
+            if(titleData != null) {
+                SetTitleData(titleData);
+            }
             RunUnitTest();
         }
     };
+
+    public String loadPackagedTestTitleData() {
+        String json = null;
+        try {
+            Context context = getApplicationContext();
+
+            InputStream is = context.getAssets().open("testTitleData.json");
+
+            int size = is.available();
+
+            byte[] buffer = new byte[size];
+
+            is.read(buffer);
+
+            is.close();
+
+            json = new String(buffer, "UTF-8");
+
+
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            return null;
+        }
+        return json;
+
+    }
 
     private void setTextToTextView(String text) {
         class SetTextToTextView implements Runnable {
@@ -78,6 +111,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public native int RunUnitTest();
+    public native int SetTitleData(String value);
 
     static {
         System.loadLibrary("UnitTest");
