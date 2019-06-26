@@ -42,7 +42,7 @@ namespace PlayFab
         std::string jsonAsString = writer.write(requestJson);
 
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-EntityToken", request.authenticationContext == nullptr ? PlayFabSettings::entityToken : request.authenticationContext->entityToken);
+        auto callContext = request.authenticationContext == nullptr ? PlayFabSettings::staticPlayer : request.authenticationContext; headers.emplace("X-EntityToken", callContext->entityToken);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Profile/GetGlobalPolicy",
@@ -92,7 +92,7 @@ namespace PlayFab
         std::string jsonAsString = writer.write(requestJson);
 
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-EntityToken", request.authenticationContext == nullptr ? PlayFabSettings::entityToken : request.authenticationContext->entityToken);
+        auto callContext = request.authenticationContext == nullptr ? PlayFabSettings::staticPlayer : request.authenticationContext; headers.emplace("X-EntityToken", callContext->entityToken);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Profile/GetProfile",
@@ -142,7 +142,7 @@ namespace PlayFab
         std::string jsonAsString = writer.write(requestJson);
 
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-EntityToken", request.authenticationContext == nullptr ? PlayFabSettings::entityToken : request.authenticationContext->entityToken);
+        auto callContext = request.authenticationContext == nullptr ? PlayFabSettings::staticPlayer : request.authenticationContext; headers.emplace("X-EntityToken", callContext->entityToken);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Profile/GetProfiles",
@@ -192,7 +192,7 @@ namespace PlayFab
         std::string jsonAsString = writer.write(requestJson);
 
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-EntityToken", request.authenticationContext == nullptr ? PlayFabSettings::entityToken : request.authenticationContext->entityToken);
+        auto callContext = request.authenticationContext == nullptr ? PlayFabSettings::staticPlayer : request.authenticationContext; headers.emplace("X-EntityToken", callContext->entityToken);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Profile/SetGlobalPolicy",
@@ -242,7 +242,7 @@ namespace PlayFab
         std::string jsonAsString = writer.write(requestJson);
 
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-EntityToken", request.authenticationContext == nullptr ? PlayFabSettings::entityToken : request.authenticationContext->entityToken);
+        auto callContext = request.authenticationContext == nullptr ? PlayFabSettings::staticPlayer : request.authenticationContext; headers.emplace("X-EntityToken", callContext->entityToken);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Profile/SetProfileLanguage",
@@ -292,7 +292,7 @@ namespace PlayFab
         std::string jsonAsString = writer.write(requestJson);
 
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-EntityToken", request.authenticationContext == nullptr ? PlayFabSettings::entityToken : request.authenticationContext->entityToken);
+        auto callContext = request.authenticationContext == nullptr ? PlayFabSettings::staticPlayer : request.authenticationContext; headers.emplace("X-EntityToken", callContext->entityToken);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Profile/SetProfilePolicy",
@@ -347,3 +347,5 @@ namespace PlayFab
 }
 
 #endif
+
+#pragma warning (enable: 4100) // formal parameters are part of a public interface

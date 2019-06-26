@@ -16,7 +16,6 @@ namespace PlayFab
         static size_t Update();
         static void ForgetAllCredentials();
 
-
         // ------------ Generated API calls
         static void AuthUser(MatchmakerModels::AuthUserRequest& request, ProcessApiCallback<MatchmakerModels::AuthUserResponse> callback, ErrorCallback errorCallback = nullptr, void* customData = nullptr);
         static void PlayerJoined(MatchmakerModels::PlayerJoinedRequest& request, ProcessApiCallback<MatchmakerModels::PlayerJoinedResponse> callback, ErrorCallback errorCallback = nullptr, void* customData = nullptr);

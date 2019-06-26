@@ -7,27 +7,45 @@ namespace PlayFab
 {
     PlayFabAuthenticationContext::PlayFabAuthenticationContext()
     {
-#ifndef DISABLE_PLAYFABCLIENT_API
-        clientSessionTicket = PlayFabSettings::clientSessionTicket;
-#endif
-#ifndef DISABLE_PLAYFABENTITY_API
-        entityToken = PlayFabSettings::entityToken;
-#endif
-#if defined(ENABLE_PLAYFABSERVER_API) || defined(ENABLE_PLAYFABADMIN_API)
-        developerSecretKey = PlayFabSettings::developerSecretKey;
-#endif
+    }
+
+    PlayFabAuthenticationContext::PlayFabAuthenticationContext(std::string clientSessionTicket, std::string entityToken, std::string playFabId, std::string entityId, std::string entityType)
+    {
     }
 
     void PlayFabAuthenticationContext::ForgetAllCredentials()
     {
 #ifndef DISABLE_PLAYFABCLIENT_API
         clientSessionTicket.clear();
+        playFabId.clear();
 #endif
 #ifndef DISABLE_PLAYFABENTITY_API
         entityToken.clear();
+        entityId.clear();
+        entityType.clear();
 #endif
-#if defined(ENABLE_PLAYFABSERVER_API) || defined(ENABLE_PLAYFABADMIN_API)
-        developerSecretKey.clear();
+    }
+
+    bool PlayFabAuthenticationContext::IsClientLoggedIn()
+    {
+        return clientSessionTicket.length();
+    }
+
+    bool PlayFabAuthenticationContext::IsEntityLoggedIn()
+    {
+        return entityToken.length();
+    }
+
+    void PlayFabAuthenticationContext::CopyFrom(std::shared_ptr<PlayFabAuthenticationContext> other)
+    {
+#ifndef DISABLE_PLAYFABCLIENT_API
+        clientSessionTicket = other->clientSessionTicket;
+        playFabId = other->playFabId;
+#endif
+#ifndef DISABLE_PLAYFABENTITY_API
+        entityToken = other->entityToken;
+        entityId = other->entityId;
+        entityType = other->entityType;
 #endif
     }
 }

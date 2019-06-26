@@ -8,6 +8,7 @@
 #include <playfab/PlayFabProfilesDataModels.h>
 #include <memory>
 
+#ifndef PLAYFAB_PLATFORM_PLAYSTATION // Issue 32699
 namespace PlayFab
 {
     /// <summary>
@@ -17,10 +18,9 @@ namespace PlayFab
     {
     private:
         std::shared_ptr<PlayFabApiSettings> settings;
-        std::shared_ptr<PlayFabAuthenticationContext> authContext;
+        std::shared_ptr<PlayFabAuthenticationContext> context;
 
     public:
-        PlayFabProfilesInstanceAPI();
         explicit PlayFabProfilesInstanceAPI(std::shared_ptr<PlayFabApiSettings> apiSettings);
         explicit PlayFabProfilesInstanceAPI(std::shared_ptr<PlayFabAuthenticationContext> authenticationContext);
         PlayFabProfilesInstanceAPI(std::shared_ptr<PlayFabApiSettings> apiSettings, std::shared_ptr<PlayFabAuthenticationContext> authenticationContext);
@@ -33,9 +33,9 @@ namespace PlayFab
         std::shared_ptr<PlayFabApiSettings> GetSettings() const;
         void SetSettings(std::shared_ptr<PlayFabApiSettings> apiSettings);
         std::shared_ptr<PlayFabAuthenticationContext> GetAuthenticationContext() const;
-        void SetAuthenticationContext(std::shared_ptr<PlayFabAuthenticationContext> authenticationContext);
         size_t Update();
         void ForgetAllCredentials();
+        bool IsEntityLoggedIn();
 
         // ------------ Generated API calls
         void GetGlobalPolicy(ProfilesModels::GetGlobalPolicyRequest& request, ProcessApiCallback<ProfilesModels::GetGlobalPolicyResponse> callback, ErrorCallback errorCallback = nullptr, void* customData = nullptr);
@@ -53,9 +53,8 @@ namespace PlayFab
         void OnSetProfileLanguageResult(int httpCode, std::string result, std::unique_ptr<CallRequestContainerBase> reqContainer);
         void OnSetProfilePolicyResult(int httpCode, std::string result, std::unique_ptr<CallRequestContainerBase> reqContainer);
         bool ValidateResult(PlayFabResultCommon& resultCommon, CallRequestContainer& container);
-    private:
-        std::shared_ptr<PlayFabAuthenticationContext> GetOrCreateAuthenticationContext();
     };
 }
 
+#endif
 #endif

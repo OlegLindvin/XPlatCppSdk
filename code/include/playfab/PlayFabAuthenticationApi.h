@@ -15,7 +15,7 @@ namespace PlayFab
     public:
         static size_t Update();
         static void ForgetAllCredentials();
-
+        bool IsEntityLoggedIn();
 
         // ------------ Generated API calls
         static void GetEntityToken(AuthenticationModels::GetEntityTokenRequest& request, ProcessApiCallback<AuthenticationModels::GetEntityTokenResponse> callback, ErrorCallback errorCallback = nullptr, void* customData = nullptr);

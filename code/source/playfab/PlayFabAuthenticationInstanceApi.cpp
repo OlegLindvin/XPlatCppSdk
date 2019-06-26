@@ -1,5 +1,6 @@
 #include <stdafx.h>
 
+#ifndef PLAYFAB_PLATFORM_PLAYSTATION // Issue 32699
 #ifndef DISABLE_PLAYFABENTITY_API
 
 #include <playfab/PlayFabAuthenticationInstanceApi.h>
@@ -16,22 +17,30 @@ namespace PlayFab
 
     PlayFabAuthenticationInstanceAPI::PlayFabAuthenticationInstanceAPI()
     {
+        this->context = std::make_shared<PlayFabAuthenticationContext>();
     }
 
     PlayFabAuthenticationInstanceAPI::PlayFabAuthenticationInstanceAPI(std::shared_ptr<PlayFabApiSettings> apiSettings)
     {
         this->settings = std::move(apiSettings);
+        this->context = std::make_shared<PlayFabAuthenticationContext>();
     }
 
     PlayFabAuthenticationInstanceAPI::PlayFabAuthenticationInstanceAPI(std::shared_ptr<PlayFabAuthenticationContext> authenticationContext)
     {
-        this->authContext = std::move(authenticationContext);
+        if (authenticationContext == nullptr)
+            this->context = std::make_shared<PlayFabAuthenticationContext>();
+        else
+            this->context = std::move(authenticationContext);
     }
 
     PlayFabAuthenticationInstanceAPI::PlayFabAuthenticationInstanceAPI(std::shared_ptr<PlayFabApiSettings> apiSettings, std::shared_ptr<PlayFabAuthenticationContext> authenticationContext)
     {
         this->settings = std::move(apiSettings);
-        this->authContext = std::move(authenticationContext);
+        if (authenticationContext == nullptr)
+            this->context = std::make_shared<PlayFabAuthenticationContext>();
+        else
+            this->context = std::move(authenticationContext);
     }
 
     PlayFabAuthenticationInstanceAPI::~PlayFabAuthenticationInstanceAPI()
@@ -50,22 +59,7 @@ namespace PlayFab
 
     std::shared_ptr<PlayFabAuthenticationContext> PlayFabAuthenticationInstanceAPI::GetAuthenticationContext() const
     {
-        return this->authContext;
-    }
-
-    void PlayFabAuthenticationInstanceAPI::SetAuthenticationContext(std::shared_ptr<PlayFabAuthenticationContext> authenticationContext)
-    {
-        this->authContext = std::move(authenticationContext);
-    }
-
-    std::shared_ptr<PlayFabAuthenticationContext> PlayFabAuthenticationInstanceAPI::GetOrCreateAuthenticationContext()
-    {
-        if (this->authContext == nullptr)
-        {
-            this->authContext = std::make_shared<PlayFabAuthenticationContext>();
-        }
-        
-        return this->authContext;
+        return this->context;
     }
 
     size_t PlayFabAuthenticationInstanceAPI::Update()
@@ -76,10 +70,15 @@ namespace PlayFab
 
     void PlayFabAuthenticationInstanceAPI::ForgetAllCredentials()
     {
-        if (this->authContext == nullptr)
+        if (this->context == nullptr)
             return;
 
-        this->authContext->ForgetAllCredentials();
+        this->context->ForgetAllCredentials();
+    }
+
+    bool PlayFabAuthenticationInstanceAPI::IsEntityLoggedIn()
+    {
+        return this->context == nullptr ? false : this->context->IsEntityLoggedIn();
     }
 
     // PlayFabAuthentication instance APIs
@@ -91,34 +90,20 @@ namespace PlayFab
         void* customData
     )
     {
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         std::string authKey, authValue;
-        if (request.authenticationContext != nullptr) {
-            if (request.authenticationContext->entityToken.length() > 0) {
-                authKey = "X-EntityToken"; authValue = request.authenticationContext->entityToken;
-            }
-            else if (request.authenticationContext->clientSessionTicket.length() > 0) {
-                authKey = "X-Authorization"; authValue = request.authenticationContext->clientSessionTicket;
-            }
-    #if defined(ENABLE_PLAYFABSERVER_API) || defined(ENABLE_PLAYFABADMIN_API)
-            else if (request.authenticationContext->developerSecretKey.length() > 0) {
-                authKey = "X-SecretKey"; authValue = request.authenticationContext->developerSecretKey;
-            }
-    #endif
+        if (callContext->entityToken.length() > 0) {
+            authKey = "X-EntityToken"; authValue = request.authenticationContext->entityToken;
         }
-        else {
-            auto authenticationContext = this->GetOrCreateAuthenticationContext();
-            if (authenticationContext->entityToken.length() > 0) {
-                authKey = "X-EntityToken"; authValue = authenticationContext->entityToken;
-            }
-            else if (authenticationContext->clientSessionTicket.length() > 0) {
-                authKey = "X-Authorization"; authValue = authenticationContext->clientSessionTicket;
-            }
-    #if defined(ENABLE_PLAYFABSERVER_API) || defined(ENABLE_PLAYFABADMIN_API)
-            else if (authenticationContext->developerSecretKey.length() > 0) {
-                authKey = "X-SecretKey"; authValue = authenticationContext->developerSecretKey;
-            }
-    #endif
+        else if (callContext->clientSessionTicket.length() > 0) {
+            authKey = "X-Authorization"; authValue = request.authenticationContext->clientSessionTicket;
         }
+#if defined(ENABLE_PLAYFABSERVER_API) || defined(ENABLE_PLAYFABADMIN_API)
+        else if (callSettings->developerSecretKey.length() > 0) {
+            authKey = "X-SecretKey"; authValue = callSettings->developerSecretKey;
+        }
+#endif
 
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
@@ -126,7 +111,6 @@ namespace PlayFab
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
         headers.emplace(authKey, authValue);
 
@@ -136,12 +120,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabAuthenticationInstanceAPI::OnGetEntityTokenResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetEntityTokenResponse>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("None", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("None", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -155,7 +139,7 @@ namespace PlayFab
         if (ValidateResult(outResult, container))
         {
             if (outResult.EntityToken.length() > 0)            {
-                this->GetOrCreateAuthenticationContext()->entityToken = outResult.EntityToken;
+                this->context->entityToken = outResult.EntityToken;
             }
 
             const auto internalPtr = container.successCallback.get();
@@ -181,9 +165,9 @@ namespace PlayFab
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-EntityToken", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->entityToken : request.authenticationContext->entityToken);
+        headers.emplace("X-EntityToken", request.authenticationContext == nullptr ? this->context->entityToken : request.authenticationContext->entityToken);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Authentication/ValidateEntityToken",
@@ -191,12 +175,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabAuthenticationInstanceAPI::OnValidateEntityTokenResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<ValidateEntityTokenResponse>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("EntityToken", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("EntityToken", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -239,3 +223,6 @@ namespace PlayFab
 }
 
 #endif
+#endif
+
+#pragma warning (enable: 4100) // formal parameters are part of a public interface

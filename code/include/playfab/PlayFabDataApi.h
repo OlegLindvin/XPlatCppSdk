@@ -15,7 +15,7 @@ namespace PlayFab
     public:
         static size_t Update();
         static void ForgetAllCredentials();
-
+        bool IsEntityLoggedIn();
 
         // ------------ Generated API calls
         static void AbortFileUploads(DataModels::AbortFileUploadsRequest& request, ProcessApiCallback<DataModels::AbortFileUploadsResponse> callback, ErrorCallback errorCallback = nullptr, void* customData = nullptr);

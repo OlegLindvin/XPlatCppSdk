@@ -10,13 +10,15 @@ namespace PlayFab
         std::string requestBody,
         CallRequestContainerCallback callback,
         void* customData,
-        std::shared_ptr<PlayFabApiSettings> settings) :
+        std::shared_ptr<PlayFabApiSettings> settings,
+        std::shared_ptr<PlayFabAuthenticationContext> context) :
         url(url),
         headers(headers),
         requestBody(requestBody),
         callback(callback),
         customData(customData),
-        apiSettings(settings)
+        apiSettings(settings),
+        context(context)
     {
     }
 
@@ -62,6 +64,11 @@ namespace PlayFab
     std::shared_ptr<PlayFabApiSettings> CallRequestContainerBase::GetApiSettings() const
     {
         return apiSettings;
+    }
+
+    std::shared_ptr<PlayFabAuthenticationContext> CallRequestContainerBase::GetContext() const
+    {
+        return context;
     }
 
     CallRequestContainerCallback CallRequestContainerBase::GetCallback() const

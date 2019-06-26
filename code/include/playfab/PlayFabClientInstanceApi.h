@@ -8,6 +8,7 @@
 #include <playfab/PlayFabClientDataModels.h>
 #include <memory>
 
+#ifndef PLAYFAB_PLATFORM_PLAYSTATION // Issue 32699
 namespace PlayFab
 {
     /// <summary>
@@ -17,7 +18,7 @@ namespace PlayFab
     {
     private:
         std::shared_ptr<PlayFabApiSettings> settings;
-        std::shared_ptr<PlayFabAuthenticationContext> authContext;
+        std::shared_ptr<PlayFabAuthenticationContext> context;
 
     public:
         PlayFabClientInstanceAPI();
@@ -33,7 +34,6 @@ namespace PlayFab
         std::shared_ptr<PlayFabApiSettings> GetSettings() const;
         void SetSettings(std::shared_ptr<PlayFabApiSettings> apiSettings);
         std::shared_ptr<PlayFabAuthenticationContext> GetAuthenticationContext() const;
-        void SetAuthenticationContext(std::shared_ptr<PlayFabAuthenticationContext> authenticationContext);
         size_t Update();
         void ForgetAllCredentials();
 
@@ -357,11 +357,10 @@ namespace PlayFab
         void OnWriteTitleEventResult(int httpCode, std::string result, std::unique_ptr<CallRequestContainerBase> reqContainer);
 
         // Private, Client-Specific
-        void MultiStepClientLogin(bool needsAttribution);
+        void MultiStepClientLogin(bool needsAttribution, std::shared_ptr<PlayFabAuthenticationContext> context);
         bool ValidateResult(PlayFabResultCommon& resultCommon, CallRequestContainer& container);
-    private:
-        std::shared_ptr<PlayFabAuthenticationContext> GetOrCreateAuthenticationContext();
     };
 }
 
+#endif
 #endif

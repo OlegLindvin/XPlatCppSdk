@@ -15,7 +15,7 @@ namespace PlayFab
     public:
         static size_t Update();
         static void ForgetAllCredentials();
-
+        bool IsEntityLoggedIn();
 
         // ------------ Generated API calls
         static void AcceptGroupApplication(GroupsModels::AcceptGroupApplicationRequest& request, ProcessApiCallback<GroupsModels::EmptyResponse> callback, ErrorCallback errorCallback = nullptr, void* customData = nullptr);

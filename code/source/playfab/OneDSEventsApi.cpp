@@ -345,7 +345,8 @@ namespace PlayFab
         std::string jsonAsString = writer.write(requestJson);
 
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-EntityToken", request.authenticationContext == nullptr ? PlayFabSettings::entityToken : request.authenticationContext->entityToken);
+        auto callContext = request.authenticationContext == nullptr ? PlayFabSettings::staticPlayer : request.authenticationContext;
+        headers.emplace("X-EntityToken", callContext->entityToken);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Event/GetTelemetryIngestionConfig",

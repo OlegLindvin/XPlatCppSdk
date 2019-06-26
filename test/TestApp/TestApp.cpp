@@ -5,7 +5,7 @@
 #include <functional>
 #include <string>
 #include <thread>
-#include <playfab/PlayFabClientApi.h>
+#include <playfab/PlayFabClientInstanceApi.h>
 #include <playfab/PlayFabClientDataModels.h>
 #include <playfab/PlayFabSettings.h>
 #include "TestApp.h"
@@ -14,13 +14,18 @@
 #include "PlayFabApiTest.h"
 #include "PlayFabEventTest.h"
 #include "PlayFabTestMultiUserStatic.h"
+#ifndef PLAYFAB_PLATFORM_PLAYSTATION
 #include "PlayFabTestMultiUserInstance.h"
+#endif
 
 using namespace PlayFab;
 using namespace ClientModels;
 
 namespace PlayFabUnit
 {
+    auto csSettings = std::make_shared<PlayFabApiSettings>();
+    auto clientInst = std::make_shared<PlayFabClientInstanceAPI>(csSettings);
+
     int TestApp::Main()
     {
         // Load the TestTitleData
@@ -52,17 +57,21 @@ namespace PlayFabUnit
         PlayFabTestMultiUserStatic pfMultiUserStaticTest;
         testRunner.Add(pfMultiUserStaticTest);
 
+#ifndef PLAYFAB_PLATFORM_PLAYSTATION // Issue 32699
         PlayFabTestMultiUserInstance pfMultiUserInstanceTest;
         testRunner.Add(pfMultiUserInstanceTest);
+#endif
 
         // Run the tests (blocks until all tests have finished).
         testRunner.Run();
 
         // Publish the test report via cloud script (and wait for it to finish).
+        csSettings->titleId = testInputs.titleId;
+
         LoginWithCustomIDRequest request;
         request.CustomId = PlayFabSettings::buildIdentifier;
         request.CreateAccount = true;
-        PlayFabClientAPI::LoginWithCustomID(request,
+        clientInst->LoginWithCustomID(request,
             std::bind(&TestApp::OnPostReportLogin, this, std::placeholders::_1, std::placeholders::_2),
             std::bind(&TestApp::OnPostReportError, this, std::placeholders::_1, std::placeholders::_2),
             &testRunner.suiteTestReport);
@@ -112,11 +121,13 @@ namespace PlayFabUnit
 
         va_list args;
         va_start(args, format);
-#if defined(PLAYFAB_PLATFORM_IOS) || defined(PLAYFAB_PLATFORM_ANDROID) || defined(PLAYFAB_PLATFORM_LINUX)
+#if defined(PLAYFAB_PLATFORM_PLAYSTATION)
+        vsnprintf_s(message, sizeof(message), format, args);
+#elif defined(PLAYFAB_PLATFORM_IOS) || defined(PLAYFAB_PLATFORM_ANDROID) || defined(PLAYFAB_PLATFORM_LINUX)
         vsnprintf(message, sizeof(message), format, args);
-#else // PLAYFAB_PLATFORM_IOS || PLAYFAB_PLATFORM_ANDROID || defined(PLAYFAB_PLATFORM_LINUX)
+#else
         _vsnprintf_s(message, sizeof(message), format, args);
-#endif // PLAYFAB_PLATFORM_IOS || PLAYFAB_PLATFORM_ANDROID || defined(PLAYFAB_PLATFORM_LINUX)
+#endif
         va_end(args);
 
         // Output the message in a platform-dependent way.
@@ -145,7 +156,7 @@ namespace PlayFabUnit
         request.FunctionName = "SaveTestData";
         request.FunctionParameter = cloudReportJson;
         request.GeneratePlayStreamEvent = true;
-        PlayFabClientAPI::ExecuteCloudScript(request,
+        clientInst->ExecuteCloudScript(request,
             std::bind(&TestApp::OnPostReportComplete, this, std::placeholders::_1, std::placeholders::_2),
             std::bind(&TestApp::OnPostReportError, this, std::placeholders::_1, std::placeholders::_2));
     }

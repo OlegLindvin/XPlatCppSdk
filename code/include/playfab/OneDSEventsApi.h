@@ -17,7 +17,7 @@ namespace PlayFab
     {
         struct OneDSWriteEventsResponse : public WriteEventsResponse
         {
-            // Error wrapper that is relayed from CallRequestContainer to a user's success callback. 
+            // Error wrapper that is relayed from CallRequestContainer to a user's success callback.
             // That error wrapper contains HTTP response information that may be valuable also for successful callbacks.
             const PlayFabError* errorWrapper;
         };

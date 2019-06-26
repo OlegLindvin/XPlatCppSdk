@@ -6,11 +6,6 @@
 namespace PlayFab
 {
     PlayFabApiSettings::PlayFabApiSettings() :
-#ifndef DISABLE_PLAYFABCLIENT_API
-        advertisingIdType(PlayFabSettings::advertisingIdType),
-        advertisingIdValue(PlayFabSettings::advertisingIdValue),
-        disableAdvertising(PlayFabSettings::disableAdvertising),
-#endif
         verticalName(PlayFabSettings::verticalName),
         baseServiceHost(PlayFabSettings::productionEnvironmentURL),
         titleId(PlayFabSettings::titleId)

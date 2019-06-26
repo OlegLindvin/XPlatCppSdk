@@ -15,7 +15,8 @@ namespace PlayFab
     public:
         static size_t Update();
         static void ForgetAllCredentials();
-
+        std::shared_ptr<PlayFabAuthenticationContext> GetAuthenticationContext() const;
+        bool IsEntityLoggedIn();
 
         // ------------ Generated API calls
         static void GetGlobalPolicy(ProfilesModels::GetGlobalPolicyRequest& request, ProcessApiCallback<ProfilesModels::GetGlobalPolicyResponse> callback, ErrorCallback errorCallback = nullptr, void* customData = nullptr);

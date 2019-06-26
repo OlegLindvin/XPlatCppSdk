@@ -1,5 +1,6 @@
 #include <stdafx.h>
 
+#ifndef PLAYFAB_PLATFORM_PLAYSTATION // Issue 32699
 #ifndef DISABLE_PLAYFABCLIENT_API
 
 #include <playfab/PlayFabClientInstanceApi.h>
@@ -16,22 +17,30 @@ namespace PlayFab
 
     PlayFabClientInstanceAPI::PlayFabClientInstanceAPI()
     {
+        this->context = std::make_shared<PlayFabAuthenticationContext>();
     }
 
     PlayFabClientInstanceAPI::PlayFabClientInstanceAPI(std::shared_ptr<PlayFabApiSettings> apiSettings)
     {
         this->settings = std::move(apiSettings);
+        this->context = std::make_shared<PlayFabAuthenticationContext>();
     }
 
     PlayFabClientInstanceAPI::PlayFabClientInstanceAPI(std::shared_ptr<PlayFabAuthenticationContext> authenticationContext)
     {
-        this->authContext = std::move(authenticationContext);
+        if (authenticationContext == nullptr)
+            this->context = std::make_shared<PlayFabAuthenticationContext>();
+        else
+            this->context = std::move(authenticationContext);
     }
 
     PlayFabClientInstanceAPI::PlayFabClientInstanceAPI(std::shared_ptr<PlayFabApiSettings> apiSettings, std::shared_ptr<PlayFabAuthenticationContext> authenticationContext)
     {
         this->settings = std::move(apiSettings);
-        this->authContext = std::move(authenticationContext);
+        if (authenticationContext == nullptr)
+            this->context = std::make_shared<PlayFabAuthenticationContext>();
+        else
+            this->context = std::move(authenticationContext);
     }
 
     PlayFabClientInstanceAPI::~PlayFabClientInstanceAPI()
@@ -50,22 +59,7 @@ namespace PlayFab
 
     std::shared_ptr<PlayFabAuthenticationContext> PlayFabClientInstanceAPI::GetAuthenticationContext() const
     {
-        return this->authContext;
-    }
-
-    void PlayFabClientInstanceAPI::SetAuthenticationContext(std::shared_ptr<PlayFabAuthenticationContext> authenticationContext)
-    {
-        this->authContext = std::move(authenticationContext);
-    }
-
-    std::shared_ptr<PlayFabAuthenticationContext> PlayFabClientInstanceAPI::GetOrCreateAuthenticationContext()
-    {
-        if (this->authContext == nullptr)
-        {
-            this->authContext = std::make_shared<PlayFabAuthenticationContext>();
-        }
-        
-        return this->authContext;
+        return this->context;
     }
 
     size_t PlayFabClientInstanceAPI::Update()
@@ -76,10 +70,15 @@ namespace PlayFab
 
     void PlayFabClientInstanceAPI::ForgetAllCredentials()
     {
-        if (this->authContext == nullptr)
+        if (this->context == nullptr)
             return;
 
-        this->authContext->ForgetAllCredentials();
+        this->context->ForgetAllCredentials();
+    }
+
+    bool PlayFabClientInstanceAPI::IsClientLoggedIn()
+    {
+        return this->context == nullptr ? false : this->context->IsClientLoggedIn();
     }
 
     // PlayFabClient instance APIs
@@ -92,15 +91,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/AcceptTrade",
@@ -108,12 +108,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnAcceptTradeResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<AcceptTradeResponse>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -144,15 +144,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/AddFriend",
@@ -160,12 +161,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnAddFriendResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<AddFriendResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -196,15 +197,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/AddGenericID",
@@ -212,12 +214,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnAddGenericIDResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<AddGenericIDResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -248,15 +250,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/AddOrUpdateContactEmail",
@@ -264,12 +267,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnAddOrUpdateContactEmailResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<AddOrUpdateContactEmailResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -300,15 +303,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/AddSharedGroupMembers",
@@ -316,12 +320,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnAddSharedGroupMembersResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<AddSharedGroupMembersResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -352,15 +356,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/AddUsernamePassword",
@@ -368,12 +373,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnAddUsernamePasswordResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<AddUsernamePasswordResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -404,15 +409,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/AddUserVirtualCurrency",
@@ -420,12 +426,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnAddUserVirtualCurrencyResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<ModifyUserVirtualCurrencyResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -456,15 +462,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/AndroidDevicePushNotificationRegistration",
@@ -472,12 +479,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnAndroidDevicePushNotificationRegistrationResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<AndroidDevicePushNotificationRegistrationResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -508,15 +515,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/AttributeInstall",
@@ -524,12 +532,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnAttributeInstallResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<AttributeInstallResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -542,15 +550,8 @@ namespace PlayFab
         AttributeInstallResult outResult;
         if (ValidateResult(outResult, container))
         {
-            auto apiSettings = this->GetSettings();
-            if (apiSettings == nullptr)
-            {
-                PlayFabSettings::advertisingIdType += "_Successful";
-            }
-            else
-            {
-                apiSettings->advertisingIdType += "_Successful";
-            }
+            if (context != nullptr)
+                context->advertisingIdType += "_Successful";
 
             const auto internalPtr = container.successCallback.get();
             if (internalPtr != nullptr)
@@ -569,15 +570,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/CancelTrade",
@@ -585,12 +587,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnCancelTradeResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<CancelTradeResponse>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -621,15 +623,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/ConfirmPurchase",
@@ -637,12 +640,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnConfirmPurchaseResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<ConfirmPurchaseResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -673,15 +676,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/ConsumeItem",
@@ -689,12 +693,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnConsumeItemResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<ConsumeItemResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -725,15 +729,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/ConsumePSNEntitlements",
@@ -741,12 +746,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnConsumePSNEntitlementsResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<ConsumePSNEntitlementsResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -777,15 +782,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/ConsumeXboxEntitlements",
@@ -793,12 +799,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnConsumeXboxEntitlementsResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<ConsumeXboxEntitlementsResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -829,15 +835,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/CreateSharedGroup",
@@ -845,12 +852,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnCreateSharedGroupResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<CreateSharedGroupResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -881,15 +888,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/ExecuteCloudScript",
@@ -897,12 +905,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnExecuteCloudScriptResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<ExecuteCloudScriptResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -933,15 +941,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetAccountInfo",
@@ -949,12 +958,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetAccountInfoResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetAccountInfoResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -985,15 +994,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetAllUsersCharacters",
@@ -1001,12 +1011,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetAllUsersCharactersResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<ListUsersCharactersResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -1037,15 +1047,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetCatalogItems",
@@ -1053,12 +1064,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetCatalogItemsResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetCatalogItemsResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -1089,15 +1100,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetCharacterData",
@@ -1105,12 +1117,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetCharacterDataResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetCharacterDataResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -1141,15 +1153,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetCharacterInventory",
@@ -1157,12 +1170,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetCharacterInventoryResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetCharacterInventoryResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -1193,15 +1206,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetCharacterLeaderboard",
@@ -1209,12 +1223,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetCharacterLeaderboardResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetCharacterLeaderboardResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -1245,15 +1259,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetCharacterReadOnlyData",
@@ -1261,12 +1276,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetCharacterReadOnlyDataResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetCharacterDataResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -1297,15 +1312,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetCharacterStatistics",
@@ -1313,12 +1329,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetCharacterStatisticsResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetCharacterStatisticsResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -1349,15 +1365,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetContentDownloadUrl",
@@ -1365,12 +1382,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetContentDownloadUrlResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetContentDownloadUrlResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -1401,15 +1418,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetCurrentGames",
@@ -1417,12 +1435,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetCurrentGamesResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<CurrentGamesResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -1453,15 +1471,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetFriendLeaderboard",
@@ -1469,12 +1488,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetFriendLeaderboardResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetLeaderboardResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -1505,15 +1524,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetFriendLeaderboardAroundPlayer",
@@ -1521,12 +1541,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetFriendLeaderboardAroundPlayerResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetFriendLeaderboardAroundPlayerResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -1557,15 +1577,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetFriendsList",
@@ -1573,12 +1594,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetFriendsListResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetFriendsListResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -1609,15 +1630,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetGameServerRegions",
@@ -1625,12 +1647,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetGameServerRegionsResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GameServerRegionsResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -1661,15 +1683,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetLeaderboard",
@@ -1677,12 +1700,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetLeaderboardResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetLeaderboardResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -1713,15 +1736,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetLeaderboardAroundCharacter",
@@ -1729,12 +1753,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetLeaderboardAroundCharacterResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetLeaderboardAroundCharacterResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -1765,15 +1789,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetLeaderboardAroundPlayer",
@@ -1781,12 +1806,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetLeaderboardAroundPlayerResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetLeaderboardAroundPlayerResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -1817,15 +1842,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetLeaderboardForUserCharacters",
@@ -1833,12 +1859,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetLeaderboardForUserCharactersResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetLeaderboardForUsersCharactersResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -1869,15 +1895,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetPaymentToken",
@@ -1885,12 +1912,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetPaymentTokenResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetPaymentTokenResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -1921,15 +1948,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetPhotonAuthenticationToken",
@@ -1937,12 +1965,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetPhotonAuthenticationTokenResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetPhotonAuthenticationTokenResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -1973,15 +2001,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetPlayerCombinedInfo",
@@ -1989,12 +2018,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetPlayerCombinedInfoResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetPlayerCombinedInfoResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -2025,15 +2054,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetPlayerProfile",
@@ -2041,12 +2071,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetPlayerProfileResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetPlayerProfileResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -2077,15 +2107,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetPlayerSegments",
@@ -2093,12 +2124,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetPlayerSegmentsResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetPlayerSegmentsResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -2129,15 +2160,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetPlayerStatistics",
@@ -2145,12 +2177,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetPlayerStatisticsResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetPlayerStatisticsResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -2181,15 +2213,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetPlayerStatisticVersions",
@@ -2197,12 +2230,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetPlayerStatisticVersionsResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetPlayerStatisticVersionsResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -2233,15 +2266,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetPlayerTags",
@@ -2249,12 +2283,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetPlayerTagsResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetPlayerTagsResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -2285,15 +2319,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetPlayerTrades",
@@ -2301,12 +2336,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetPlayerTradesResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetPlayerTradesResponse>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -2337,15 +2372,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetPlayFabIDsFromFacebookIDs",
@@ -2353,12 +2389,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetPlayFabIDsFromFacebookIDsResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetPlayFabIDsFromFacebookIDsResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -2389,15 +2425,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetPlayFabIDsFromFacebookInstantGamesIds",
@@ -2405,12 +2442,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetPlayFabIDsFromFacebookInstantGamesIdsResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetPlayFabIDsFromFacebookInstantGamesIdsResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -2441,15 +2478,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetPlayFabIDsFromGameCenterIDs",
@@ -2457,12 +2495,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetPlayFabIDsFromGameCenterIDsResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetPlayFabIDsFromGameCenterIDsResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -2493,15 +2531,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetPlayFabIDsFromGenericIDs",
@@ -2509,12 +2548,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetPlayFabIDsFromGenericIDsResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetPlayFabIDsFromGenericIDsResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -2545,15 +2584,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetPlayFabIDsFromGoogleIDs",
@@ -2561,12 +2601,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetPlayFabIDsFromGoogleIDsResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetPlayFabIDsFromGoogleIDsResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -2597,15 +2637,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetPlayFabIDsFromKongregateIDs",
@@ -2613,12 +2654,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetPlayFabIDsFromKongregateIDsResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetPlayFabIDsFromKongregateIDsResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -2649,15 +2690,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetPlayFabIDsFromNintendoSwitchDeviceIds",
@@ -2665,12 +2707,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetPlayFabIDsFromNintendoSwitchDeviceIdsResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetPlayFabIDsFromNintendoSwitchDeviceIdsResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -2701,15 +2743,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetPlayFabIDsFromPSNAccountIDs",
@@ -2717,12 +2760,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetPlayFabIDsFromPSNAccountIDsResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetPlayFabIDsFromPSNAccountIDsResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -2753,15 +2796,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetPlayFabIDsFromSteamIDs",
@@ -2769,12 +2813,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetPlayFabIDsFromSteamIDsResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetPlayFabIDsFromSteamIDsResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -2805,15 +2849,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetPlayFabIDsFromTwitchIDs",
@@ -2821,12 +2866,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetPlayFabIDsFromTwitchIDsResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetPlayFabIDsFromTwitchIDsResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -2857,15 +2902,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetPlayFabIDsFromXboxLiveIDs",
@@ -2873,12 +2919,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetPlayFabIDsFromXboxLiveIDsResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetPlayFabIDsFromXboxLiveIDsResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -2909,15 +2955,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetPublisherData",
@@ -2925,12 +2972,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetPublisherDataResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetPublisherDataResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -2961,15 +3008,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetPurchase",
@@ -2977,12 +3025,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetPurchaseResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetPurchaseResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -3013,15 +3061,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetSharedGroupData",
@@ -3029,12 +3078,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetSharedGroupDataResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetSharedGroupDataResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -3065,15 +3114,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetStoreItems",
@@ -3081,12 +3131,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetStoreItemsResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetStoreItemsResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -3117,15 +3167,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetTime",
@@ -3133,12 +3184,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetTimeResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetTimeResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -3169,15 +3220,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetTitleData",
@@ -3185,12 +3237,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetTitleDataResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetTitleDataResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -3221,15 +3273,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetTitleNews",
@@ -3237,12 +3290,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetTitleNewsResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetTitleNewsResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -3273,13 +3326,14 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
         headers.emplace("", "");
 
@@ -3289,12 +3343,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetTitlePublicKeyResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetTitlePublicKeyResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("None", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("None", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -3325,15 +3379,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetTradeStatus",
@@ -3341,12 +3396,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetTradeStatusResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetTradeStatusResponse>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -3377,15 +3432,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetUserData",
@@ -3393,12 +3449,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetUserDataResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetUserDataResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -3429,15 +3485,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetUserInventory",
@@ -3445,12 +3502,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetUserInventoryResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetUserInventoryResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -3481,15 +3538,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetUserPublisherData",
@@ -3497,12 +3555,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetUserPublisherDataResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetUserDataResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -3533,15 +3591,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetUserPublisherReadOnlyData",
@@ -3549,12 +3608,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetUserPublisherReadOnlyDataResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetUserDataResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -3585,15 +3644,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GetUserReadOnlyData",
@@ -3601,12 +3661,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetUserReadOnlyDataResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetUserDataResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -3637,13 +3697,14 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
         headers.emplace("", "");
 
@@ -3653,12 +3714,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGetWindowsHelloChallengeResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GetWindowsHelloChallengeResponse>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("None", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("None", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -3689,15 +3750,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/GrantCharacterToUser",
@@ -3705,12 +3767,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnGrantCharacterToUserResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<GrantCharacterToUserResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -3741,15 +3803,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/LinkAndroidDeviceID",
@@ -3757,12 +3820,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLinkAndroidDeviceIDResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LinkAndroidDeviceIDResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -3793,15 +3856,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/LinkCustomID",
@@ -3809,12 +3873,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLinkCustomIDResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LinkCustomIDResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -3845,15 +3909,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/LinkFacebookAccount",
@@ -3861,12 +3926,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLinkFacebookAccountResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LinkFacebookAccountResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -3897,15 +3962,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/LinkFacebookInstantGamesId",
@@ -3913,12 +3979,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLinkFacebookInstantGamesIdResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LinkFacebookInstantGamesIdResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -3949,15 +4015,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/LinkGameCenterAccount",
@@ -3965,12 +4032,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLinkGameCenterAccountResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LinkGameCenterAccountResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -4001,15 +4068,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/LinkGoogleAccount",
@@ -4017,12 +4085,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLinkGoogleAccountResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LinkGoogleAccountResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -4053,15 +4121,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/LinkIOSDeviceID",
@@ -4069,12 +4138,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLinkIOSDeviceIDResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LinkIOSDeviceIDResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -4105,15 +4174,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/LinkKongregate",
@@ -4121,12 +4191,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLinkKongregateResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LinkKongregateAccountResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -4157,15 +4227,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/LinkNintendoSwitchDeviceId",
@@ -4173,12 +4244,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLinkNintendoSwitchDeviceIdResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LinkNintendoSwitchDeviceIdResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -4209,15 +4280,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/LinkOpenIdConnect",
@@ -4225,12 +4297,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLinkOpenIdConnectResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<EmptyResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -4261,15 +4333,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/LinkPSNAccount",
@@ -4277,12 +4350,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLinkPSNAccountResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LinkPSNAccountResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -4313,15 +4386,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/LinkSteamAccount",
@@ -4329,12 +4403,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLinkSteamAccountResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LinkSteamAccountResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -4365,15 +4439,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/LinkTwitch",
@@ -4381,12 +4456,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLinkTwitchResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LinkTwitchAccountResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -4417,15 +4492,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/LinkWindowsHello",
@@ -4433,12 +4509,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLinkWindowsHelloResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LinkWindowsHelloAccountResponse>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -4469,15 +4545,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/LinkXboxAccount",
@@ -4485,12 +4562,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLinkXboxAccountResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LinkXboxAccountResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -4520,21 +4597,10 @@ namespace PlayFab
         void* customData
     )
     {
-        auto apiSettings = this->GetSettings();
-        if (apiSettings == nullptr)
-        {
-            if (PlayFabSettings::titleId.length() > 0)
-            {
-                request.TitleId = PlayFabSettings::titleId;
-            }
-        }
-        else
-        {
-            if (apiSettings->titleId.length() > 0)
-            {
-                request.TitleId = apiSettings->titleId;
-            }
-        }
+
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+        if (request.TitleId.length() == 0 && callSettings->titleId.length() > 0)
+            request.TitleId = callSettings->titleId;
 
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
@@ -4542,7 +4608,6 @@ namespace PlayFab
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
         headers.emplace("", "");
 
@@ -4552,12 +4617,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLoginWithAndroidDeviceIDResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LoginResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("None", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("None", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -4570,18 +4635,10 @@ namespace PlayFab
         LoginResult outResult;
         if (ValidateResult(outResult, container))
         {
-            if (outResult.SessionTicket.length() > 0)
-            {
-                outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>();
-                outResult.authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                auto authenticationContext = this->GetOrCreateAuthenticationContext();
-                authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                if (outResult.EntityToken.notNull()) {
-                    outResult.authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                    authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                }
-                MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution);
-            }
+            auto callContext = reqContainer->GetContext();
+            outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>(outResult.SessionTicket, outResult.EntityToken->EntityToken, outResult.PlayFabId, outResult.EntityToken->Entity->Id, outResult.EntityToken->Entity->Type);
+            callContext->CopyFrom(outResult.authenticationContext);
+            MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution, callContext);
 
             const auto internalPtr = container.successCallback.get();
             if (internalPtr != nullptr)
@@ -4599,21 +4656,10 @@ namespace PlayFab
         void* customData
     )
     {
-        auto apiSettings = this->GetSettings();
-        if (apiSettings == nullptr)
-        {
-            if (PlayFabSettings::titleId.length() > 0)
-            {
-                request.TitleId = PlayFabSettings::titleId;
-            }
-        }
-        else
-        {
-            if (apiSettings->titleId.length() > 0)
-            {
-                request.TitleId = apiSettings->titleId;
-            }
-        }
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
+        if (request.TitleId.length() == 0 && callSettings->titleId.length() > 0)
+            request.TitleId = callSettings->titleId;
 
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
@@ -4621,7 +4667,6 @@ namespace PlayFab
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
         headers.emplace("", "");
 
@@ -4631,12 +4676,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLoginWithCustomIDResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LoginResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("None", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("None", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -4649,18 +4694,10 @@ namespace PlayFab
         LoginResult outResult;
         if (ValidateResult(outResult, container))
         {
-            if (outResult.SessionTicket.length() > 0)
-            {
-                outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>();
-                outResult.authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                auto authenticationContext = this->GetOrCreateAuthenticationContext();
-                authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                if (outResult.EntityToken.notNull()) {
-                    outResult.authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                    authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                }
-                MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution);
-            }
+            auto callContext = reqContainer->GetContext();
+            outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>(outResult.SessionTicket, outResult.EntityToken->EntityToken, outResult.PlayFabId, outResult.EntityToken->Entity->Id, outResult.EntityToken->Entity->Type);
+            callContext->CopyFrom(outResult.authenticationContext);
+            MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution, callContext);
 
             const auto internalPtr = container.successCallback.get();
             if (internalPtr != nullptr)
@@ -4678,21 +4715,11 @@ namespace PlayFab
         void* customData
     )
     {
-        auto apiSettings = this->GetSettings();
-        if (apiSettings == nullptr)
-        {
-            if (PlayFabSettings::titleId.length() > 0)
-            {
-                request.TitleId = PlayFabSettings::titleId;
-            }
-        }
-        else
-        {
-            if (apiSettings->titleId.length() > 0)
-            {
-                request.TitleId = apiSettings->titleId;
-            }
-        }
+
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
+        if (request.TitleId.length() == 0 && callSettings->titleId.length() > 0)
+            request.TitleId = callSettings->titleId;
 
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
@@ -4700,7 +4727,6 @@ namespace PlayFab
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
         headers.emplace("", "");
 
@@ -4710,12 +4736,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLoginWithEmailAddressResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LoginResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("None", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("None", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -4728,18 +4754,10 @@ namespace PlayFab
         LoginResult outResult;
         if (ValidateResult(outResult, container))
         {
-            if (outResult.SessionTicket.length() > 0)
-            {
-                outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>();
-                outResult.authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                auto authenticationContext = this->GetOrCreateAuthenticationContext();
-                authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                if (outResult.EntityToken.notNull()) {
-                    outResult.authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                    authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                }
-                MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution);
-            }
+            auto callContext = reqContainer->GetContext();
+            outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>(outResult.SessionTicket, outResult.EntityToken->EntityToken, outResult.PlayFabId, outResult.EntityToken->Entity->Id, outResult.EntityToken->Entity->Type);
+            callContext->CopyFrom(outResult.authenticationContext);
+            MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution, callContext);
 
             const auto internalPtr = container.successCallback.get();
             if (internalPtr != nullptr)
@@ -4757,21 +4775,10 @@ namespace PlayFab
         void* customData
     )
     {
-        auto apiSettings = this->GetSettings();
-        if (apiSettings == nullptr)
-        {
-            if (PlayFabSettings::titleId.length() > 0)
-            {
-                request.TitleId = PlayFabSettings::titleId;
-            }
-        }
-        else
-        {
-            if (apiSettings->titleId.length() > 0)
-            {
-                request.TitleId = apiSettings->titleId;
-            }
-        }
+
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+        if (request.TitleId.length() == 0 && callSettings->titleId.length() > 0)
+            request.TitleId = callSettings->titleId;
 
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
@@ -4779,7 +4786,6 @@ namespace PlayFab
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
         headers.emplace("", "");
 
@@ -4789,12 +4795,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLoginWithFacebookResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LoginResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("None", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("None", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -4807,18 +4813,10 @@ namespace PlayFab
         LoginResult outResult;
         if (ValidateResult(outResult, container))
         {
-            if (outResult.SessionTicket.length() > 0)
-            {
-                outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>();
-                outResult.authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                auto authenticationContext = this->GetOrCreateAuthenticationContext();
-                authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                if (outResult.EntityToken.notNull()) {
-                    outResult.authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                    authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                }
-                MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution);
-            }
+            auto callContext = reqContainer->GetContext();
+            outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>(outResult.SessionTicket, outResult.EntityToken->EntityToken, outResult.PlayFabId, outResult.EntityToken->Entity->Id, outResult.EntityToken->Entity->Type);
+            callContext->CopyFrom(outResult.authenticationContext);
+            MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution, callContext);
 
             const auto internalPtr = container.successCallback.get();
             if (internalPtr != nullptr)
@@ -4836,21 +4834,10 @@ namespace PlayFab
         void* customData
     )
     {
-        auto apiSettings = this->GetSettings();
-        if (apiSettings == nullptr)
-        {
-            if (PlayFabSettings::titleId.length() > 0)
-            {
-                request.TitleId = PlayFabSettings::titleId;
-            }
-        }
-        else
-        {
-            if (apiSettings->titleId.length() > 0)
-            {
-                request.TitleId = apiSettings->titleId;
-            }
-        }
+
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+        if (request.TitleId.length() == 0 && callSettings->titleId.length() > 0)
+            request.TitleId = callSettings->titleId;
 
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
@@ -4858,7 +4845,6 @@ namespace PlayFab
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
         headers.emplace("", "");
 
@@ -4868,12 +4854,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLoginWithFacebookInstantGamesIdResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LoginResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("None", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("None", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -4886,18 +4872,10 @@ namespace PlayFab
         LoginResult outResult;
         if (ValidateResult(outResult, container))
         {
-            if (outResult.SessionTicket.length() > 0)
-            {
-                outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>();
-                outResult.authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                auto authenticationContext = this->GetOrCreateAuthenticationContext();
-                authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                if (outResult.EntityToken.notNull()) {
-                    outResult.authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                    authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                }
-                MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution);
-            }
+            auto callContext = reqContainer->GetContext();
+            outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>(outResult.SessionTicket, outResult.EntityToken->EntityToken, outResult.PlayFabId, outResult.EntityToken->Entity->Id, outResult.EntityToken->Entity->Type);
+            callContext->CopyFrom(outResult.authenticationContext);
+            MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution, callContext);
 
             const auto internalPtr = container.successCallback.get();
             if (internalPtr != nullptr)
@@ -4915,21 +4893,10 @@ namespace PlayFab
         void* customData
     )
     {
-        auto apiSettings = this->GetSettings();
-        if (apiSettings == nullptr)
-        {
-            if (PlayFabSettings::titleId.length() > 0)
-            {
-                request.TitleId = PlayFabSettings::titleId;
-            }
-        }
-        else
-        {
-            if (apiSettings->titleId.length() > 0)
-            {
-                request.TitleId = apiSettings->titleId;
-            }
-        }
+
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+        if (request.TitleId.length() == 0 && callSettings->titleId.length() > 0)
+            request.TitleId = callSettings->titleId;
 
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
@@ -4937,7 +4904,6 @@ namespace PlayFab
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
         headers.emplace("", "");
 
@@ -4947,12 +4913,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLoginWithGameCenterResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LoginResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("None", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("None", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -4965,18 +4931,10 @@ namespace PlayFab
         LoginResult outResult;
         if (ValidateResult(outResult, container))
         {
-            if (outResult.SessionTicket.length() > 0)
-            {
-                outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>();
-                outResult.authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                auto authenticationContext = this->GetOrCreateAuthenticationContext();
-                authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                if (outResult.EntityToken.notNull()) {
-                    outResult.authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                    authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                }
-                MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution);
-            }
+            auto callContext = reqContainer->GetContext();
+            outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>(outResult.SessionTicket, outResult.EntityToken->EntityToken, outResult.PlayFabId, outResult.EntityToken->Entity->Id, outResult.EntityToken->Entity->Type);
+            callContext->CopyFrom(outResult.authenticationContext);
+            MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution, callContext);
 
             const auto internalPtr = container.successCallback.get();
             if (internalPtr != nullptr)
@@ -4994,21 +4952,10 @@ namespace PlayFab
         void* customData
     )
     {
-        auto apiSettings = this->GetSettings();
-        if (apiSettings == nullptr)
-        {
-            if (PlayFabSettings::titleId.length() > 0)
-            {
-                request.TitleId = PlayFabSettings::titleId;
-            }
-        }
-        else
-        {
-            if (apiSettings->titleId.length() > 0)
-            {
-                request.TitleId = apiSettings->titleId;
-            }
-        }
+
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+        if (request.TitleId.length() == 0 && callSettings->titleId.length() > 0)
+            request.TitleId = callSettings->titleId;
 
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
@@ -5016,7 +4963,6 @@ namespace PlayFab
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
         headers.emplace("", "");
 
@@ -5026,12 +4972,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLoginWithGoogleAccountResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LoginResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("None", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("None", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -5044,18 +4990,10 @@ namespace PlayFab
         LoginResult outResult;
         if (ValidateResult(outResult, container))
         {
-            if (outResult.SessionTicket.length() > 0)
-            {
-                outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>();
-                outResult.authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                auto authenticationContext = this->GetOrCreateAuthenticationContext();
-                authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                if (outResult.EntityToken.notNull()) {
-                    outResult.authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                    authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                }
-                MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution);
-            }
+            auto callContext = reqContainer->GetContext();
+            outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>(outResult.SessionTicket, outResult.EntityToken->EntityToken, outResult.PlayFabId, outResult.EntityToken->Entity->Id, outResult.EntityToken->Entity->Type);
+            callContext->CopyFrom(outResult.authenticationContext);
+            MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution, callContext);
 
             const auto internalPtr = container.successCallback.get();
             if (internalPtr != nullptr)
@@ -5073,21 +5011,10 @@ namespace PlayFab
         void* customData
     )
     {
-        auto apiSettings = this->GetSettings();
-        if (apiSettings == nullptr)
-        {
-            if (PlayFabSettings::titleId.length() > 0)
-            {
-                request.TitleId = PlayFabSettings::titleId;
-            }
-        }
-        else
-        {
-            if (apiSettings->titleId.length() > 0)
-            {
-                request.TitleId = apiSettings->titleId;
-            }
-        }
+
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+        if (request.TitleId.length() == 0 && callSettings->titleId.length() > 0)
+            request.TitleId = callSettings->titleId;
 
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
@@ -5095,7 +5022,6 @@ namespace PlayFab
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
         headers.emplace("", "");
 
@@ -5105,12 +5031,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLoginWithIOSDeviceIDResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LoginResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("None", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("None", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -5123,18 +5049,10 @@ namespace PlayFab
         LoginResult outResult;
         if (ValidateResult(outResult, container))
         {
-            if (outResult.SessionTicket.length() > 0)
-            {
-                outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>();
-                outResult.authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                auto authenticationContext = this->GetOrCreateAuthenticationContext();
-                authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                if (outResult.EntityToken.notNull()) {
-                    outResult.authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                    authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                }
-                MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution);
-            }
+            auto callContext = reqContainer->GetContext();
+            outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>(outResult.SessionTicket, outResult.EntityToken->EntityToken, outResult.PlayFabId, outResult.EntityToken->Entity->Id, outResult.EntityToken->Entity->Type);
+            callContext->CopyFrom(outResult.authenticationContext);
+            MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution, callContext);
 
             const auto internalPtr = container.successCallback.get();
             if (internalPtr != nullptr)
@@ -5152,21 +5070,10 @@ namespace PlayFab
         void* customData
     )
     {
-        auto apiSettings = this->GetSettings();
-        if (apiSettings == nullptr)
-        {
-            if (PlayFabSettings::titleId.length() > 0)
-            {
-                request.TitleId = PlayFabSettings::titleId;
-            }
-        }
-        else
-        {
-            if (apiSettings->titleId.length() > 0)
-            {
-                request.TitleId = apiSettings->titleId;
-            }
-        }
+
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+        if (request.TitleId.length() == 0 && callSettings->titleId.length() > 0)
+            request.TitleId = callSettings->titleId;
 
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
@@ -5174,7 +5081,6 @@ namespace PlayFab
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
         headers.emplace("", "");
 
@@ -5184,12 +5090,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLoginWithKongregateResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LoginResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("None", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("None", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -5202,18 +5108,10 @@ namespace PlayFab
         LoginResult outResult;
         if (ValidateResult(outResult, container))
         {
-            if (outResult.SessionTicket.length() > 0)
-            {
-                outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>();
-                outResult.authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                auto authenticationContext = this->GetOrCreateAuthenticationContext();
-                authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                if (outResult.EntityToken.notNull()) {
-                    outResult.authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                    authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                }
-                MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution);
-            }
+            auto callContext = reqContainer->GetContext();
+            outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>(outResult.SessionTicket, outResult.EntityToken->EntityToken, outResult.PlayFabId, outResult.EntityToken->Entity->Id, outResult.EntityToken->Entity->Type);
+            callContext->CopyFrom(outResult.authenticationContext);
+            MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution, callContext);
 
             const auto internalPtr = container.successCallback.get();
             if (internalPtr != nullptr)
@@ -5231,21 +5129,10 @@ namespace PlayFab
         void* customData
     )
     {
-        auto apiSettings = this->GetSettings();
-        if (apiSettings == nullptr)
-        {
-            if (PlayFabSettings::titleId.length() > 0)
-            {
-                request.TitleId = PlayFabSettings::titleId;
-            }
-        }
-        else
-        {
-            if (apiSettings->titleId.length() > 0)
-            {
-                request.TitleId = apiSettings->titleId;
-            }
-        }
+
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+        if (request.TitleId.length() == 0 && callSettings->titleId.length() > 0)
+            request.TitleId = callSettings->titleId;
 
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
@@ -5253,7 +5140,6 @@ namespace PlayFab
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
         headers.emplace("", "");
 
@@ -5263,12 +5149,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLoginWithNintendoSwitchDeviceIdResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LoginResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("None", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("None", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -5281,18 +5167,10 @@ namespace PlayFab
         LoginResult outResult;
         if (ValidateResult(outResult, container))
         {
-            if (outResult.SessionTicket.length() > 0)
-            {
-                outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>();
-                outResult.authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                auto authenticationContext = this->GetOrCreateAuthenticationContext();
-                authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                if (outResult.EntityToken.notNull()) {
-                    outResult.authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                    authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                }
-                MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution);
-            }
+            auto callContext = reqContainer->GetContext();
+            outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>(outResult.SessionTicket, outResult.EntityToken->EntityToken, outResult.PlayFabId, outResult.EntityToken->Entity->Id, outResult.EntityToken->Entity->Type);
+            callContext->CopyFrom(outResult.authenticationContext);
+            MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution, callContext);
 
             const auto internalPtr = container.successCallback.get();
             if (internalPtr != nullptr)
@@ -5310,21 +5188,10 @@ namespace PlayFab
         void* customData
     )
     {
-        auto apiSettings = this->GetSettings();
-        if (apiSettings == nullptr)
-        {
-            if (PlayFabSettings::titleId.length() > 0)
-            {
-                request.TitleId = PlayFabSettings::titleId;
-            }
-        }
-        else
-        {
-            if (apiSettings->titleId.length() > 0)
-            {
-                request.TitleId = apiSettings->titleId;
-            }
-        }
+
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+        if (request.TitleId.length() == 0 && callSettings->titleId.length() > 0)
+            request.TitleId = callSettings->titleId;
 
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
@@ -5332,7 +5199,6 @@ namespace PlayFab
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
         headers.emplace("", "");
 
@@ -5342,12 +5208,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLoginWithOpenIdConnectResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LoginResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("None", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("None", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -5360,18 +5226,10 @@ namespace PlayFab
         LoginResult outResult;
         if (ValidateResult(outResult, container))
         {
-            if (outResult.SessionTicket.length() > 0)
-            {
-                outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>();
-                outResult.authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                auto authenticationContext = this->GetOrCreateAuthenticationContext();
-                authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                if (outResult.EntityToken.notNull()) {
-                    outResult.authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                    authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                }
-                MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution);
-            }
+            auto callContext = reqContainer->GetContext();
+            outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>(outResult.SessionTicket, outResult.EntityToken->EntityToken, outResult.PlayFabId, outResult.EntityToken->Entity->Id, outResult.EntityToken->Entity->Type);
+            callContext->CopyFrom(outResult.authenticationContext);
+            MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution, callContext);
 
             const auto internalPtr = container.successCallback.get();
             if (internalPtr != nullptr)
@@ -5389,21 +5247,10 @@ namespace PlayFab
         void* customData
     )
     {
-        auto apiSettings = this->GetSettings();
-        if (apiSettings == nullptr)
-        {
-            if (PlayFabSettings::titleId.length() > 0)
-            {
-                request.TitleId = PlayFabSettings::titleId;
-            }
-        }
-        else
-        {
-            if (apiSettings->titleId.length() > 0)
-            {
-                request.TitleId = apiSettings->titleId;
-            }
-        }
+
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+        if (request.TitleId.length() == 0 && callSettings->titleId.length() > 0)
+            request.TitleId = callSettings->titleId;
 
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
@@ -5411,7 +5258,6 @@ namespace PlayFab
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
         headers.emplace("", "");
 
@@ -5421,12 +5267,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLoginWithPlayFabResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LoginResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("None", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("None", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -5439,18 +5285,10 @@ namespace PlayFab
         LoginResult outResult;
         if (ValidateResult(outResult, container))
         {
-            if (outResult.SessionTicket.length() > 0)
-            {
-                outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>();
-                outResult.authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                auto authenticationContext = this->GetOrCreateAuthenticationContext();
-                authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                if (outResult.EntityToken.notNull()) {
-                    outResult.authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                    authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                }
-                MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution);
-            }
+            auto callContext = reqContainer->GetContext();
+            outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>(outResult.SessionTicket, outResult.EntityToken->EntityToken, outResult.PlayFabId, outResult.EntityToken->Entity->Id, outResult.EntityToken->Entity->Type);
+            callContext->CopyFrom(outResult.authenticationContext);
+            MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution, callContext);
 
             const auto internalPtr = container.successCallback.get();
             if (internalPtr != nullptr)
@@ -5468,21 +5306,10 @@ namespace PlayFab
         void* customData
     )
     {
-        auto apiSettings = this->GetSettings();
-        if (apiSettings == nullptr)
-        {
-            if (PlayFabSettings::titleId.length() > 0)
-            {
-                request.TitleId = PlayFabSettings::titleId;
-            }
-        }
-        else
-        {
-            if (apiSettings->titleId.length() > 0)
-            {
-                request.TitleId = apiSettings->titleId;
-            }
-        }
+
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+        if (request.TitleId.length() == 0 && callSettings->titleId.length() > 0)
+            request.TitleId = callSettings->titleId;
 
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
@@ -5490,7 +5317,6 @@ namespace PlayFab
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
         headers.emplace("", "");
 
@@ -5500,12 +5326,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLoginWithPSNResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LoginResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("None", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("None", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -5518,18 +5344,10 @@ namespace PlayFab
         LoginResult outResult;
         if (ValidateResult(outResult, container))
         {
-            if (outResult.SessionTicket.length() > 0)
-            {
-                outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>();
-                outResult.authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                auto authenticationContext = this->GetOrCreateAuthenticationContext();
-                authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                if (outResult.EntityToken.notNull()) {
-                    outResult.authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                    authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                }
-                MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution);
-            }
+            auto callContext = reqContainer->GetContext();
+            outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>(outResult.SessionTicket, outResult.EntityToken->EntityToken, outResult.PlayFabId, outResult.EntityToken->Entity->Id, outResult.EntityToken->Entity->Type);
+            callContext->CopyFrom(outResult.authenticationContext);
+            MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution, callContext);
 
             const auto internalPtr = container.successCallback.get();
             if (internalPtr != nullptr)
@@ -5547,21 +5365,10 @@ namespace PlayFab
         void* customData
     )
     {
-        auto apiSettings = this->GetSettings();
-        if (apiSettings == nullptr)
-        {
-            if (PlayFabSettings::titleId.length() > 0)
-            {
-                request.TitleId = PlayFabSettings::titleId;
-            }
-        }
-        else
-        {
-            if (apiSettings->titleId.length() > 0)
-            {
-                request.TitleId = apiSettings->titleId;
-            }
-        }
+
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+        if (request.TitleId.length() == 0 && callSettings->titleId.length() > 0)
+            request.TitleId = callSettings->titleId;
 
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
@@ -5569,7 +5376,6 @@ namespace PlayFab
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
         headers.emplace("", "");
 
@@ -5579,12 +5385,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLoginWithSteamResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LoginResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("None", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("None", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -5597,18 +5403,10 @@ namespace PlayFab
         LoginResult outResult;
         if (ValidateResult(outResult, container))
         {
-            if (outResult.SessionTicket.length() > 0)
-            {
-                outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>();
-                outResult.authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                auto authenticationContext = this->GetOrCreateAuthenticationContext();
-                authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                if (outResult.EntityToken.notNull()) {
-                    outResult.authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                    authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                }
-                MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution);
-            }
+            auto callContext = reqContainer->GetContext();
+            outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>(outResult.SessionTicket, outResult.EntityToken->EntityToken, outResult.PlayFabId, outResult.EntityToken->Entity->Id, outResult.EntityToken->Entity->Type);
+            callContext->CopyFrom(outResult.authenticationContext);
+            MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution, callContext);
 
             const auto internalPtr = container.successCallback.get();
             if (internalPtr != nullptr)
@@ -5626,21 +5424,10 @@ namespace PlayFab
         void* customData
     )
     {
-        auto apiSettings = this->GetSettings();
-        if (apiSettings == nullptr)
-        {
-            if (PlayFabSettings::titleId.length() > 0)
-            {
-                request.TitleId = PlayFabSettings::titleId;
-            }
-        }
-        else
-        {
-            if (apiSettings->titleId.length() > 0)
-            {
-                request.TitleId = apiSettings->titleId;
-            }
-        }
+
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+        if (request.TitleId.length() == 0 && callSettings->titleId.length() > 0)
+            request.TitleId = callSettings->titleId;
 
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
@@ -5648,7 +5435,6 @@ namespace PlayFab
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
         headers.emplace("", "");
 
@@ -5658,12 +5444,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLoginWithTwitchResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LoginResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("None", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("None", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -5676,18 +5462,10 @@ namespace PlayFab
         LoginResult outResult;
         if (ValidateResult(outResult, container))
         {
-            if (outResult.SessionTicket.length() > 0)
-            {
-                outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>();
-                outResult.authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                auto authenticationContext = this->GetOrCreateAuthenticationContext();
-                authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                if (outResult.EntityToken.notNull()) {
-                    outResult.authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                    authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                }
-                MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution);
-            }
+            auto callContext = reqContainer->GetContext();
+            outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>(outResult.SessionTicket, outResult.EntityToken->EntityToken, outResult.PlayFabId, outResult.EntityToken->Entity->Id, outResult.EntityToken->Entity->Type);
+            callContext->CopyFrom(outResult.authenticationContext);
+            MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution, callContext);
 
             const auto internalPtr = container.successCallback.get();
             if (internalPtr != nullptr)
@@ -5705,21 +5483,10 @@ namespace PlayFab
         void* customData
     )
     {
-        auto apiSettings = this->GetSettings();
-        if (apiSettings == nullptr)
-        {
-            if (PlayFabSettings::titleId.length() > 0)
-            {
-                request.TitleId = PlayFabSettings::titleId;
-            }
-        }
-        else
-        {
-            if (apiSettings->titleId.length() > 0)
-            {
-                request.TitleId = apiSettings->titleId;
-            }
-        }
+
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+        if (request.TitleId.length() == 0 && callSettings->titleId.length() > 0)
+            request.TitleId = callSettings->titleId;
 
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
@@ -5727,7 +5494,6 @@ namespace PlayFab
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
         headers.emplace("", "");
 
@@ -5737,12 +5503,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLoginWithWindowsHelloResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LoginResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("None", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("None", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -5755,18 +5521,10 @@ namespace PlayFab
         LoginResult outResult;
         if (ValidateResult(outResult, container))
         {
-            if (outResult.SessionTicket.length() > 0)
-            {
-                outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>();
-                outResult.authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                auto authenticationContext = this->GetOrCreateAuthenticationContext();
-                authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                if (outResult.EntityToken.notNull()) {
-                    outResult.authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                    authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                }
-                MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution);
-            }
+            auto callContext = reqContainer->GetContext();
+            outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>(outResult.SessionTicket, outResult.EntityToken->EntityToken, outResult.PlayFabId, outResult.EntityToken->Entity->Id, outResult.EntityToken->Entity->Type);
+            callContext->CopyFrom(outResult.authenticationContext);
+            MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution, callContext);
 
             const auto internalPtr = container.successCallback.get();
             if (internalPtr != nullptr)
@@ -5784,21 +5542,10 @@ namespace PlayFab
         void* customData
     )
     {
-        auto apiSettings = this->GetSettings();
-        if (apiSettings == nullptr)
-        {
-            if (PlayFabSettings::titleId.length() > 0)
-            {
-                request.TitleId = PlayFabSettings::titleId;
-            }
-        }
-        else
-        {
-            if (apiSettings->titleId.length() > 0)
-            {
-                request.TitleId = apiSettings->titleId;
-            }
-        }
+
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+        if (request.TitleId.length() == 0 && callSettings->titleId.length() > 0)
+            request.TitleId = callSettings->titleId;
 
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
@@ -5806,7 +5553,6 @@ namespace PlayFab
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
         headers.emplace("", "");
 
@@ -5816,12 +5562,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnLoginWithXboxResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LoginResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("None", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("None", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -5834,18 +5580,10 @@ namespace PlayFab
         LoginResult outResult;
         if (ValidateResult(outResult, container))
         {
-            if (outResult.SessionTicket.length() > 0)
-            {
-                outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>();
-                outResult.authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                auto authenticationContext = this->GetOrCreateAuthenticationContext();
-                authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                if (outResult.EntityToken.notNull()) {
-                    outResult.authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                    authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                }
-                MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution);
-            }
+            auto callContext = reqContainer->GetContext();
+            outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>(outResult.SessionTicket, outResult.EntityToken->EntityToken, outResult.PlayFabId, outResult.EntityToken->Entity->Id, outResult.EntityToken->Entity->Type);
+            callContext->CopyFrom(outResult.authenticationContext);
+            MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution, callContext);
 
             const auto internalPtr = container.successCallback.get();
             if (internalPtr != nullptr)
@@ -5864,15 +5602,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/Matchmake",
@@ -5880,12 +5619,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnMatchmakeResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<MatchmakeResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -5916,15 +5655,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/OpenTrade",
@@ -5932,12 +5672,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnOpenTradeResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<OpenTradeResponse>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -5968,15 +5708,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/PayForPurchase",
@@ -5984,12 +5725,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnPayForPurchaseResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<PayForPurchaseResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -6020,15 +5761,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/PurchaseItem",
@@ -6036,12 +5778,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnPurchaseItemResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<PurchaseItemResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -6072,15 +5814,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/RedeemCoupon",
@@ -6088,12 +5831,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnRedeemCouponResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<RedeemCouponResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -6124,15 +5867,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/RefreshPSNAuthToken",
@@ -6140,12 +5884,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnRefreshPSNAuthTokenResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<EmptyResponse>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -6176,15 +5920,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/RegisterForIOSPushNotification",
@@ -6192,12 +5937,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnRegisterForIOSPushNotificationResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<RegisterForIOSPushNotificationResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -6227,21 +5972,10 @@ namespace PlayFab
         void* customData
     )
     {
-        auto apiSettings = this->GetSettings();
-        if (apiSettings == nullptr)
-        {
-            if (PlayFabSettings::titleId.length() > 0)
-            {
-                request.TitleId = PlayFabSettings::titleId;
-            }
-        }
-        else
-        {
-            if (apiSettings->titleId.length() > 0)
-            {
-                request.TitleId = apiSettings->titleId;
-            }
-        }
+
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+        if (request.TitleId.length() == 0 && callSettings->titleId.length() > 0)
+            request.TitleId = callSettings->titleId;
 
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
@@ -6249,7 +5983,6 @@ namespace PlayFab
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
         headers.emplace("", "");
 
@@ -6259,12 +5992,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnRegisterPlayFabUserResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<RegisterPlayFabUserResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("None", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("None", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -6279,8 +6012,8 @@ namespace PlayFab
         {
             if (outResult.SessionTicket.length() > 0)
             {
-                this->GetOrCreateAuthenticationContext()->clientSessionTicket = outResult.SessionTicket;
-                MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution);
+                this->context->clientSessionTicket = outResult.SessionTicket;
+                MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution, reqContainer->GetContext());
             }
 
             const auto internalPtr = container.successCallback.get();
@@ -6299,21 +6032,10 @@ namespace PlayFab
         void* customData
     )
     {
-        auto apiSettings = this->GetSettings();
-        if (apiSettings == nullptr)
-        {
-            if (PlayFabSettings::titleId.length() > 0)
-            {
-                request.TitleId = PlayFabSettings::titleId;
-            }
-        }
-        else
-        {
-            if (apiSettings->titleId.length() > 0)
-            {
-                request.TitleId = apiSettings->titleId;
-            }
-        }
+
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+        if (request.TitleId.length() == 0 && callSettings->titleId.length() > 0)
+            request.TitleId = callSettings->titleId;
 
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
@@ -6321,7 +6043,6 @@ namespace PlayFab
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
         headers.emplace("", "");
 
@@ -6331,12 +6052,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnRegisterWithWindowsHelloResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<LoginResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("None", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("None", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -6349,18 +6070,10 @@ namespace PlayFab
         LoginResult outResult;
         if (ValidateResult(outResult, container))
         {
-            if (outResult.SessionTicket.length() > 0)
-            {
-                outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>();
-                outResult.authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                auto authenticationContext = this->GetOrCreateAuthenticationContext();
-                authenticationContext->clientSessionTicket = outResult.SessionTicket;
-                if (outResult.EntityToken.notNull()) {
-                    outResult.authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                    authenticationContext->entityToken = outResult.EntityToken->EntityToken;
-                }
-                MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution);
-            }
+            auto callContext = reqContainer->GetContext();
+            outResult.authenticationContext = std::make_shared<PlayFabAuthenticationContext>(outResult.SessionTicket, outResult.EntityToken->EntityToken, outResult.PlayFabId, outResult.EntityToken->Entity->Id, outResult.EntityToken->Entity->Type);
+            callContext->CopyFrom(outResult.authenticationContext);
+            MultiStepClientLogin(outResult.SettingsForUser->NeedsAttribution, callContext);
 
             const auto internalPtr = container.successCallback.get();
             if (internalPtr != nullptr)
@@ -6379,15 +6092,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/RemoveContactEmail",
@@ -6395,12 +6109,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnRemoveContactEmailResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<RemoveContactEmailResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -6431,15 +6145,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/RemoveFriend",
@@ -6447,12 +6162,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnRemoveFriendResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<RemoveFriendResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -6483,15 +6198,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/RemoveGenericID",
@@ -6499,12 +6215,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnRemoveGenericIDResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<RemoveGenericIDResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -6535,15 +6251,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/RemoveSharedGroupMembers",
@@ -6551,12 +6268,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnRemoveSharedGroupMembersResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<RemoveSharedGroupMembersResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -6587,15 +6304,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/ReportDeviceInfo",
@@ -6603,12 +6321,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnReportDeviceInfoResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<EmptyResponse>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -6639,15 +6357,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/ReportPlayer",
@@ -6655,12 +6374,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnReportPlayerResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<ReportPlayerClientResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -6691,15 +6410,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/RestoreIOSPurchases",
@@ -6707,12 +6427,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnRestoreIOSPurchasesResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<RestoreIOSPurchasesResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -6743,13 +6463,14 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
         headers.emplace("", "");
 
@@ -6759,12 +6480,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnSendAccountRecoveryEmailResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<SendAccountRecoveryEmailResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("None", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("None", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -6795,15 +6516,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/SetFriendTags",
@@ -6811,12 +6533,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnSetFriendTagsResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<SetFriendTagsResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -6847,15 +6569,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/SetPlayerSecret",
@@ -6863,12 +6586,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnSetPlayerSecretResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<SetPlayerSecretResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -6899,15 +6622,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/StartGame",
@@ -6915,12 +6639,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnStartGameResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<StartGameResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -6951,15 +6675,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/StartPurchase",
@@ -6967,12 +6692,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnStartPurchaseResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<StartPurchaseResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -7003,15 +6728,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/SubtractUserVirtualCurrency",
@@ -7019,12 +6745,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnSubtractUserVirtualCurrencyResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<ModifyUserVirtualCurrencyResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -7055,15 +6781,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/UnlinkAndroidDeviceID",
@@ -7071,12 +6798,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnUnlinkAndroidDeviceIDResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<UnlinkAndroidDeviceIDResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -7107,15 +6834,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/UnlinkCustomID",
@@ -7123,12 +6851,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnUnlinkCustomIDResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<UnlinkCustomIDResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -7159,15 +6887,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/UnlinkFacebookAccount",
@@ -7175,12 +6904,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnUnlinkFacebookAccountResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<UnlinkFacebookAccountResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -7211,15 +6940,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/UnlinkFacebookInstantGamesId",
@@ -7227,12 +6957,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnUnlinkFacebookInstantGamesIdResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<UnlinkFacebookInstantGamesIdResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -7263,15 +6993,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/UnlinkGameCenterAccount",
@@ -7279,12 +7010,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnUnlinkGameCenterAccountResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<UnlinkGameCenterAccountResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -7315,15 +7046,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/UnlinkGoogleAccount",
@@ -7331,12 +7063,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnUnlinkGoogleAccountResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<UnlinkGoogleAccountResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -7367,15 +7099,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/UnlinkIOSDeviceID",
@@ -7383,12 +7116,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnUnlinkIOSDeviceIDResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<UnlinkIOSDeviceIDResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -7419,15 +7152,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/UnlinkKongregate",
@@ -7435,12 +7169,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnUnlinkKongregateResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<UnlinkKongregateAccountResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -7471,15 +7205,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/UnlinkNintendoSwitchDeviceId",
@@ -7487,12 +7222,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnUnlinkNintendoSwitchDeviceIdResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<UnlinkNintendoSwitchDeviceIdResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -7523,15 +7258,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/UnlinkOpenIdConnect",
@@ -7539,12 +7275,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnUnlinkOpenIdConnectResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<EmptyResponse>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -7575,15 +7311,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/UnlinkPSNAccount",
@@ -7591,12 +7328,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnUnlinkPSNAccountResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<UnlinkPSNAccountResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -7627,15 +7364,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/UnlinkSteamAccount",
@@ -7643,12 +7381,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnUnlinkSteamAccountResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<UnlinkSteamAccountResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -7679,15 +7417,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/UnlinkTwitch",
@@ -7695,12 +7434,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnUnlinkTwitchResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<UnlinkTwitchAccountResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -7731,15 +7470,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/UnlinkWindowsHello",
@@ -7747,12 +7487,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnUnlinkWindowsHelloResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<UnlinkWindowsHelloAccountResponse>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -7783,15 +7523,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/UnlinkXboxAccount",
@@ -7799,12 +7540,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnUnlinkXboxAccountResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<UnlinkXboxAccountResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -7835,15 +7576,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/UnlockContainerInstance",
@@ -7851,12 +7593,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnUnlockContainerInstanceResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<UnlockContainerItemResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -7887,15 +7629,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/UnlockContainerItem",
@@ -7903,12 +7646,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnUnlockContainerItemResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<UnlockContainerItemResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -7939,15 +7682,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/UpdateAvatarUrl",
@@ -7955,12 +7699,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnUpdateAvatarUrlResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<EmptyResponse>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -7991,15 +7735,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/UpdateCharacterData",
@@ -8007,12 +7752,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnUpdateCharacterDataResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<UpdateCharacterDataResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -8043,15 +7788,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/UpdateCharacterStatistics",
@@ -8059,12 +7805,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnUpdateCharacterStatisticsResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<UpdateCharacterStatisticsResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -8095,15 +7841,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/UpdatePlayerStatistics",
@@ -8111,12 +7858,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnUpdatePlayerStatisticsResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<UpdatePlayerStatisticsResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -8147,15 +7894,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/UpdateSharedGroupData",
@@ -8163,12 +7911,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnUpdateSharedGroupDataResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<UpdateSharedGroupDataResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -8199,15 +7947,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/UpdateUserData",
@@ -8215,12 +7964,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnUpdateUserDataResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<UpdateUserDataResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -8251,15 +8000,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/UpdateUserPublisherData",
@@ -8267,12 +8017,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnUpdateUserPublisherDataResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<UpdateUserDataResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -8303,15 +8053,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/UpdateUserTitleDisplayName",
@@ -8319,12 +8070,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnUpdateUserTitleDisplayNameResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<UpdateUserTitleDisplayNameResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -8355,15 +8106,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/ValidateAmazonIAPReceipt",
@@ -8371,12 +8123,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnValidateAmazonIAPReceiptResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<ValidateAmazonReceiptResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -8407,15 +8159,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/ValidateGooglePlayPurchase",
@@ -8423,12 +8176,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnValidateGooglePlayPurchaseResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<ValidateGooglePlayPurchaseResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -8459,15 +8212,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/ValidateIOSReceipt",
@@ -8475,12 +8229,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnValidateIOSReceiptResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<ValidateIOSReceiptResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -8511,15 +8265,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/ValidateWindowsStoreReceipt",
@@ -8527,12 +8282,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnValidateWindowsStoreReceiptResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<ValidateWindowsReceiptResult>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -8563,15 +8318,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/WriteCharacterEvent",
@@ -8579,12 +8335,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnWriteCharacterEventResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<WriteEventResponse>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -8615,15 +8371,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/WritePlayerEvent",
@@ -8631,12 +8388,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnWritePlayerEventResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<WriteEventResponse>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -8667,15 +8424,16 @@ namespace PlayFab
     )
     {
 
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
+
         IPlayFabHttpPlugin& http = *PlayFabPluginManager::GetPlugin<IPlayFabHttpPlugin>(PlayFabPluginContract::PlayFab_Transport);
         const auto requestJson = request.ToJson();
 
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->clientSessionTicket : request.authenticationContext->clientSessionTicket);
+        headers.emplace("X-Authorization", request.authenticationContext == nullptr ? this->context->clientSessionTicket : request.authenticationContext->clientSessionTicket);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Client/WriteTitleEvent",
@@ -8683,12 +8441,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabClientInstanceAPI::OnWriteTitleEventResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<WriteEventResponse>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SessionTicket", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SessionTicket", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -8711,42 +8469,18 @@ namespace PlayFab
         }
     }
 
-    // Private PlayFabClientInstanceAPI specific
-    bool PlayFabClientInstanceAPI::IsClientLoggedIn()
+    void PlayFabClientInstanceAPI::MultiStepClientLogin(bool needsAttribution, std::shared_ptr<PlayFabAuthenticationContext> callContext)
     {
-        return !this->GetOrCreateAuthenticationContext()->clientSessionTicket.empty();
-    }
-
-    void PlayFabClientInstanceAPI::MultiStepClientLogin(bool needsAttribution)
-    {
-        auto apiSettings = this->GetSettings();
-        if (apiSettings == nullptr)
+        if (needsAttribution && !callContext->disableAdvertising && callContext->advertisingIdType.length() > 0 && callContext->advertisingIdValue.length() > 0)
         {
-            if (needsAttribution && !PlayFabSettings::disableAdvertising && PlayFabSettings::advertisingIdType.length() > 0 && PlayFabSettings::advertisingIdValue.length() > 0)
-            {
-                AttributeInstallRequest request;
-                if (PlayFabSettings::advertisingIdType == PlayFabSettings::AD_TYPE_IDFA)
-                    request.Idfa = PlayFabSettings::advertisingIdValue;
-                else if (PlayFabSettings::advertisingIdType == PlayFabSettings::AD_TYPE_ANDROID_ID)
-                    request.Adid = PlayFabSettings::advertisingIdValue;
-                else
-                    return;
-                AttributeInstall(request, nullptr, nullptr);
-            }
-        }
-        else
-        {
-            if (needsAttribution && !apiSettings->disableAdvertising && apiSettings->advertisingIdType.length() > 0 && apiSettings->advertisingIdValue.length() > 0)
-            {
-                AttributeInstallRequest request;
-                if (apiSettings->advertisingIdType == PlayFabSettings::AD_TYPE_IDFA)
-                    request.Idfa = apiSettings->advertisingIdValue;
-                else if (apiSettings->advertisingIdType == PlayFabSettings::AD_TYPE_ANDROID_ID)
-                    request.Adid = apiSettings->advertisingIdValue;
-                else
-                    return;
-                AttributeInstall(request, nullptr, nullptr);
-            }
+            AttributeInstallRequest request;
+            if (callContext->advertisingIdType == PlayFabSettings::AD_TYPE_IDFA)
+                request.Idfa = callContext->advertisingIdValue;
+            else if (callContext->advertisingIdType == PlayFabSettings::AD_TYPE_ANDROID_ID)
+                request.Adid = callContext->advertisingIdValue;
+            else
+                return;
+            AttributeInstall(request, nullptr, nullptr);
         }
     }
 
@@ -8770,3 +8504,6 @@ namespace PlayFab
 }
 
 #endif
+#endif
+
+#pragma warning (enable: 4100) // formal parameters are part of a public interface

@@ -1,5 +1,6 @@
 #include <stdafx.h>
 
+#ifndef PLAYFAB_PLATFORM_PLAYSTATION // Issue 32699
 #ifdef ENABLE_PLAYFABSERVER_API
 
 #include <playfab/PlayFabMatchmakerInstanceApi.h>
@@ -14,10 +15,6 @@ namespace PlayFab
 {
     using namespace MatchmakerModels;
 
-    PlayFabMatchmakerInstanceAPI::PlayFabMatchmakerInstanceAPI()
-    {
-    }
-
     PlayFabMatchmakerInstanceAPI::PlayFabMatchmakerInstanceAPI(std::shared_ptr<PlayFabApiSettings> apiSettings)
     {
         this->settings = std::move(apiSettings);
@@ -25,13 +22,15 @@ namespace PlayFab
 
     PlayFabMatchmakerInstanceAPI::PlayFabMatchmakerInstanceAPI(std::shared_ptr<PlayFabAuthenticationContext> authenticationContext)
     {
-        this->authContext = std::move(authenticationContext);
+        if (authenticationContext == nullptr) throw std::runtime_error("Context cannot be null, create a PlayFabAuthenticationContext for each player in advance, or get <PlayFabClientInstanceAPI>.GetAuthenticationContext");
+        this->context = std::move(authenticationContext);
     }
 
     PlayFabMatchmakerInstanceAPI::PlayFabMatchmakerInstanceAPI(std::shared_ptr<PlayFabApiSettings> apiSettings, std::shared_ptr<PlayFabAuthenticationContext> authenticationContext)
     {
+        if (authenticationContext == nullptr) throw std::runtime_error("Context cannot be null, create a PlayFabAuthenticationContext for each player in advance, or get <PlayFabClientInstanceAPI>.GetAuthenticationContext");
         this->settings = std::move(apiSettings);
-        this->authContext = std::move(authenticationContext);
+        this->context = std::move(authenticationContext);
     }
 
     PlayFabMatchmakerInstanceAPI::~PlayFabMatchmakerInstanceAPI()
@@ -50,22 +49,7 @@ namespace PlayFab
 
     std::shared_ptr<PlayFabAuthenticationContext> PlayFabMatchmakerInstanceAPI::GetAuthenticationContext() const
     {
-        return this->authContext;
-    }
-
-    void PlayFabMatchmakerInstanceAPI::SetAuthenticationContext(std::shared_ptr<PlayFabAuthenticationContext> authenticationContext)
-    {
-        this->authContext = std::move(authenticationContext);
-    }
-
-    std::shared_ptr<PlayFabAuthenticationContext> PlayFabMatchmakerInstanceAPI::GetOrCreateAuthenticationContext()
-    {
-        if (this->authContext == nullptr)
-        {
-            this->authContext = std::make_shared<PlayFabAuthenticationContext>();
-        }
-        
-        return this->authContext;
+        return this->context;
     }
 
     size_t PlayFabMatchmakerInstanceAPI::Update()
@@ -76,10 +60,10 @@ namespace PlayFab
 
     void PlayFabMatchmakerInstanceAPI::ForgetAllCredentials()
     {
-        if (this->authContext == nullptr)
+        if (this->context == nullptr)
             return;
 
-        this->authContext->ForgetAllCredentials();
+        this->context->ForgetAllCredentials();
     }
 
     // PlayFabMatchmaker instance APIs
@@ -98,9 +82,9 @@ namespace PlayFab
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-SecretKey", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->developerSecretKey : request.authenticationContext->developerSecretKey);
+        headers.emplace("X-SecretKey", PlayFabSettings::staticSettings->developerSecretKey);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Matchmaker/AuthUser",
@@ -108,12 +92,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabMatchmakerInstanceAPI::OnAuthUserResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<AuthUserResponse>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SecretKey", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SecretKey", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -150,9 +134,9 @@ namespace PlayFab
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-SecretKey", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->developerSecretKey : request.authenticationContext->developerSecretKey);
+        headers.emplace("X-SecretKey", PlayFabSettings::staticSettings->developerSecretKey);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Matchmaker/PlayerJoined",
@@ -160,12 +144,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabMatchmakerInstanceAPI::OnPlayerJoinedResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<PlayerJoinedResponse>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SecretKey", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SecretKey", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -202,9 +186,9 @@ namespace PlayFab
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-SecretKey", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->developerSecretKey : request.authenticationContext->developerSecretKey);
+        headers.emplace("X-SecretKey", PlayFabSettings::staticSettings->developerSecretKey);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Matchmaker/PlayerLeft",
@@ -212,12 +196,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabMatchmakerInstanceAPI::OnPlayerLeftResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<PlayerLeftResponse>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SecretKey", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SecretKey", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -254,9 +238,9 @@ namespace PlayFab
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-SecretKey", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->developerSecretKey : request.authenticationContext->developerSecretKey);
+        headers.emplace("X-SecretKey", PlayFabSettings::staticSettings->developerSecretKey);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Matchmaker/StartGame",
@@ -264,12 +248,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabMatchmakerInstanceAPI::OnStartGameResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<StartGameResponse>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SecretKey", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SecretKey", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -306,9 +290,9 @@ namespace PlayFab
         Json::FastWriter writer;
         std::string jsonAsString = writer.write(requestJson);
 
-        auto authenticationContext = request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext() : request.authenticationContext;
+        auto callContext = request.authenticationContext == nullptr ? this->context : request.authenticationContext; auto callSettings = this->settings == nullptr ? PlayFabSettings::staticSettings : this->settings;
         std::unordered_map<std::string, std::string> headers;
-        headers.emplace("X-SecretKey", request.authenticationContext == nullptr ? this->GetOrCreateAuthenticationContext()->developerSecretKey : request.authenticationContext->developerSecretKey);
+        headers.emplace("X-SecretKey", PlayFabSettings::staticSettings->developerSecretKey);
 
         auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
             "/Matchmaker/UserInfo",
@@ -316,12 +300,12 @@ namespace PlayFab
             jsonAsString,
             std::bind(&PlayFabMatchmakerInstanceAPI::OnUserInfoResult, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
             customData,
-            this->settings));
+            callSettings));
 
         reqContainer->successCallback = std::shared_ptr<void>((callback == nullptr) ? nullptr : new ProcessApiCallback<UserInfoResponse>(callback));
         reqContainer->errorCallback = errorCallback;
 
-        if (PlayFabSettings::ValidateSettings("SecretKey", authenticationContext, this->settings, *reqContainer))
+        if (PlayFabSettings::ValidateSettings("SecretKey", callContext, callSettings, *reqContainer))
         {
             http.MakePostRequest(std::unique_ptr<CallRequestContainerBase>(static_cast<CallRequestContainerBase*>(reqContainer.release())));
         }
@@ -364,3 +348,6 @@ namespace PlayFab
 }
 
 #endif
+#endif
+
+#pragma warning (enable: 4100) // formal parameters are part of a public interface

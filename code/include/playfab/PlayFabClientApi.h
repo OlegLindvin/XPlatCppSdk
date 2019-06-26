@@ -16,7 +16,6 @@ namespace PlayFab
         static size_t Update();
         static void ForgetAllCredentials();
 
-
         // Public, Client-Specific
         static bool IsClientLoggedIn();
 
@@ -342,7 +341,7 @@ namespace PlayFab
 
 
         // Private, Client-Specific
-        static void MultiStepClientLogin(bool needsAttribution);
+        static void MultiStepClientLogin(bool needsAttribution, std::shared_ptr<PlayFabAuthenticationContext> context);
         static bool ValidateResult(PlayFabResultCommon& resultCommon, CallRequestContainer& container);
     };
 }

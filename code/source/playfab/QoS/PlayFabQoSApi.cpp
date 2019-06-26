@@ -71,7 +71,7 @@ namespace PlayFab
             std::string jsonAsString = writer.write(requestJson);
 
             std::unordered_map<std::string, std::string> headers;
-            headers.emplace("X-EntityToken", request.authenticationContext == nullptr ? PlayFabSettings::entityToken : request.authenticationContext->entityToken);
+            auto callContext = request.authenticationContext == nullptr ? PlayFabSettings::staticPlayer : request.authenticationContext; headers.emplace("X-EntityToken", callContext->entityToken);
 
             auto reqContainer = std::unique_ptr<CallRequestContainer>(new CallRequestContainer(
                 "/Event/WriteTelemetryEvents",
@@ -177,7 +177,7 @@ namespace PlayFab
         {
             Json::Value value;
             value["ErrorCode"] = Json::Value(result.errorCode);
-            
+
             Json::Value each_regionCenterResult;
             for (int i = 0; i < result.regionResults.size(); ++i)
             {
@@ -225,7 +225,7 @@ namespace PlayFab
             ListQosServersRequest request;
             PlayFabMultiplayerAPI::ListQosServers(request, ListQosServersSuccessCallBack, ListQosServersFailureCallBack, reinterpret_cast<void*>(this));
         }
-        
+
         void PlayFabQoSApi::ListQosServersSuccessCallBack(const ListQosServersResponse& result, void* customData)
         {
             // Custom data received is a pointer to our api object
@@ -375,7 +375,7 @@ namespace PlayFab
             // Accumulate final results
             for (int i = 0; i < numThreads; ++i)
             {
-                // If the result is valid and available 
+                // If the result is valid and available
                 if (asyncPingResults[i].valid())
                 {
                     std::chrono::milliseconds pingWaitTime = std::chrono::milliseconds(timeoutMs);

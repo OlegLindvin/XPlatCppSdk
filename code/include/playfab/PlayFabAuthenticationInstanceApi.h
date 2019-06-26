@@ -8,6 +8,7 @@
 #include <playfab/PlayFabAuthenticationDataModels.h>
 #include <memory>
 
+#ifndef PLAYFAB_PLATFORM_PLAYSTATION // Issue 32699
 namespace PlayFab
 {
     /// <summary>
@@ -17,7 +18,7 @@ namespace PlayFab
     {
     private:
         std::shared_ptr<PlayFabApiSettings> settings;
-        std::shared_ptr<PlayFabAuthenticationContext> authContext;
+        std::shared_ptr<PlayFabAuthenticationContext> context;
 
     public:
         PlayFabAuthenticationInstanceAPI();
@@ -33,9 +34,9 @@ namespace PlayFab
         std::shared_ptr<PlayFabApiSettings> GetSettings() const;
         void SetSettings(std::shared_ptr<PlayFabApiSettings> apiSettings);
         std::shared_ptr<PlayFabAuthenticationContext> GetAuthenticationContext() const;
-        void SetAuthenticationContext(std::shared_ptr<PlayFabAuthenticationContext> authenticationContext);
         size_t Update();
         void ForgetAllCredentials();
+        bool IsEntityLoggedIn();
 
         // ------------ Generated API calls
         void GetEntityToken(AuthenticationModels::GetEntityTokenRequest& request, ProcessApiCallback<AuthenticationModels::GetEntityTokenResponse> callback, ErrorCallback errorCallback = nullptr, void* customData = nullptr);
@@ -45,9 +46,8 @@ namespace PlayFab
         void OnGetEntityTokenResult(int httpCode, std::string result, std::unique_ptr<CallRequestContainerBase> reqContainer);
         void OnValidateEntityTokenResult(int httpCode, std::string result, std::unique_ptr<CallRequestContainerBase> reqContainer);
         bool ValidateResult(PlayFabResultCommon& resultCommon, CallRequestContainer& container);
-    private:
-        std::shared_ptr<PlayFabAuthenticationContext> GetOrCreateAuthenticationContext();
     };
 }
 
+#endif
 #endif

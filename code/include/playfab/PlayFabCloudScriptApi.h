@@ -15,7 +15,8 @@ namespace PlayFab
     public:
         static size_t Update();
         static void ForgetAllCredentials();
-
+        std::shared_ptr<PlayFabAuthenticationContext> GetAuthenticationContext() const;
+        bool IsEntityLoggedIn();
 
         // ------------ Generated API calls
         static void ExecuteEntityCloudScript(CloudScriptModels::ExecuteEntityCloudScriptRequest& request, ProcessApiCallback<CloudScriptModels::ExecuteCloudScriptResult> callback, ErrorCallback errorCallback = nullptr, void* customData = nullptr);

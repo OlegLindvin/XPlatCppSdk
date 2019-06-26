@@ -1,6 +1,9 @@
 // Copyright (C) Microsoft Corporation. All rights reserved.
 
 #include "TestAppPch.h"
+
+#ifndef PLAYFAB_PLATFORM_PLAYSTATION // Issue 32699
+
 #include <playfab/PlayFabClientInstanceApi.h>
 #include <playfab/PlayFabSettings.h>
 #include "TestContext.h"
@@ -41,6 +44,13 @@ namespace PlayFabUnit
 
     void PlayFabTestMultiUserInstance::MultiUserLogin2Success(const LoginResult& result, void* customData)
     {
+        TestContext* testContext = reinterpret_cast<TestContext*>(customData);
+        if (multiUser2ClientApi == nullptr)
+        {
+            testContext->Fail("My client instance was deleted");
+            return;
+        }
+
         GetPlayerProfileRequest profileRequest;
         profileRequest.authenticationContext = result.authenticationContext;
 
@@ -125,3 +135,5 @@ namespace PlayFabUnit
         multiUser2ClientApi = nullptr;
     }
 }
+
+#endif  // PLAYFAB_PLATFORM_PLAYSTATION
